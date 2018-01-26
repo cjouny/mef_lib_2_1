@@ -107,7 +107,7 @@ si4	build_mef_header_block(ui1 *encrypted_hdr_block, MEF_HEADER_INFO *hdr_struct
 		srand(time(NULL));
 		rn = (si4 *) ehb;
 		for (i = MEF_HEADER_LENGTH / 4; i--;)
-			*rn++ = (si4)random();
+			*rn++ = (si4)rand();
 	}
 	
 	/* build unencrypted block */
@@ -720,13 +720,13 @@ ui8 generate_unique_ID(ui1 *array)
     
     if (first_time)
     {
-        srandom(time(NULL));
+        srand(time(NULL));
         first_time = 0;
     }
     
 	for (i=0; i<SESSION_UNIQUE_ID_LENGTH; i++) 
 	{
-		array[i] = (ui1)(random() % 255);
+		array[i] = (ui1)(rand() % 255);
 		long_output += array[i] >> i; 
 	}
 	

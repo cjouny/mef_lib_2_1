@@ -1,26 +1,29 @@
 
-//mex decomp_mef_mex.c mef_lib.c -o decomp_mef
+//mex decomp_mef_mex.c mef_lib.c -output decomp_mef
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h> // CCJ
 #include "mex.h"
 #include "mef.h"
 
 #define BIG_ENDIAN_CODE		0
 #define LITTLE_ENDIAN_CODE	1
 
-void decomp_mef(char *f_name, unsigned long long int start_idx, unsigned long long int end_idx, int *decomp_data, char *password)
+void decomp_mef(char *f_name, uint64_t start_idx, uint64_t end_idx, int32_t *decomp_data, char *password)
 {
-	char			*c, *comp_data, *cdp, *last_block_p, encryptionKey[240];
+	char				*c, *comp_data, *cdp, *last_block_p, encryptionKey[240];
 	unsigned char		*header, *diff_buffer;
-	int			*dcdp, *temp_data_buf;
-	unsigned int		cpu_endianness, n_read, comp_data_len, bytes_decoded, tot_samples;
-	unsigned int		i, n_index_entries, tot_index_fields, kept_samples, skipped_samples;
-	unsigned long long int	start_block_file_offset, end_block_file_offset, start_block_idx, end_block_idx;
-	unsigned long long int	*index_data, last_block_len;
-	FILE			*fp;
+	int32_t				*temp_data_buf;
+	uint32_t			cpu_endianness, n_read, comp_data_len, bytes_decoded, tot_samples;
+	uint32_t			i, n_index_entries, tot_index_fields, skipped_samples;
+    int32_t             *dcdp;
+    int32_t             kept_samples;
+	uint64_t            start_block_file_offset, end_block_file_offset, start_block_idx, end_block_idx;
+	uint64_t            *index_data, last_block_len;
+	FILE                *fp;
 	MEF_HEADER_INFO		hdr_info;
 	RED_BLOCK_HDR_INFO	block_hdr;
     
@@ -52,7 +55,7 @@ void decomp_mef(char *f_name, unsigned long long int start_idx, unsigned long lo
 	}
 	free(header); header=NULL;
 	
-	// showHeader(&hdr_info);
+	//showHeader(&hdr_info);
 	
 	/* get file endianness */
 	if (hdr_info.byte_order_code != LITTLE_ENDIAN_CODE) {
@@ -66,16 +69,21 @@ void decomp_mef(char *f_name, unsigned long long int start_idx, unsigned long lo
 		*encryptionKey = 0;
 	
 	/* read in index data */
-	n_index_entries = (unsigned int) hdr_info.number_of_index_entries;
+	n_index_entries = (uint32_t) hdr_info.number_of_index_entries;
+    printf("[decomp_mef] n_index_entries => %i \n", n_index_entries);
+	printf("[decomp_mef] size of uint long long int => %i \n", sizeof(unsigned long long int));
 	fseeko(fp, (off_t) hdr_info.index_data_offset, SEEK_SET);
+    printf("[decomp_mef] ftell => %i \n", ftell(fp));
 	tot_index_fields = n_index_entries * 3;	// 3 fields per entry
 	index_data = (unsigned long long int *) malloc(tot_index_fields * sizeof(unsigned long long int));
 	if (index_data == NULL) {
 		printf("[decomp_mef] could not allocate enough memory for file \"%s\" => exiting\n", f_name);
 		return;
 	}
-	
+	printf("[decomp_mef] tot_index_fields => %i \n", (size_t) tot_index_fields);
 	n_read = fread(index_data, sizeof(unsigned long long int), (size_t) tot_index_fields, fp);
+    printf("[decomp_mef] n_read / tot_index_fields => %i / %i\n", n_read, tot_index_fields);
+	printf("[decomp_mef] ftell => %i \n", ftell(fp));
 	if (n_read != tot_index_fields) {
 		printf("[decomp_mef] error reading index data for file \"%s\" => exiting\n", f_name);
 		return;
@@ -133,32 +141,32 @@ void decomp_mef(char *f_name, unsigned long long int start_idx, unsigned long lo
 	// decode first block to temp array
 	cdp = comp_data;  
 	diff_buffer = (unsigned char *) malloc(hdr_info.maximum_block_length * 4);
-	temp_data_buf = (int *) malloc(hdr_info.maximum_block_length * 4);
-	bytes_decoded = (unsigned int) RED_decompress_block(cdp, temp_data_buf, diff_buffer, encryptionKey, 0, hdr_info.data_encryption_used, &block_hdr);
+	temp_data_buf = (int32_t *) malloc(hdr_info.maximum_block_length * 4);
+	bytes_decoded = (uint32_t) RED_decompress_block(cdp, temp_data_buf, diff_buffer, encryptionKey, 0, hdr_info.data_encryption_used, &block_hdr);
 	cdp += bytes_decoded;
 	
 	// copy requested samples from first block to output buffer
-	skipped_samples = (unsigned int) (start_idx - start_block_idx);
+	skipped_samples = (uint32_t) (start_idx - start_block_idx);
 	if (skipped_samples > block_hdr.sample_count) {
 		//this is bad- likely means idx data is corrupt 
 		printf("[decomp_mef] block indexing error: decoded %d samples, attempting to skip %lu samples\n", block_hdr.sample_count, skipped_samples);
 		return;
 	}
 	kept_samples = block_hdr.sample_count - skipped_samples;
-	tot_samples = (unsigned int) (end_idx - start_idx + 1);
+	tot_samples = (uint32_t) (end_idx - start_idx + 1);
 	if (kept_samples >= tot_samples) { // start and end indices in same block => already done
-		memcpy((void *) decomp_data, (void *) (temp_data_buf + skipped_samples), tot_samples * sizeof(int));
+		memcpy((void *) decomp_data, (void *) (temp_data_buf + skipped_samples), tot_samples * sizeof(int32_t));
 		free(comp_data);
 		return;
 	}
-	memcpy((void *) decomp_data, (void *) (temp_data_buf + skipped_samples), kept_samples * sizeof(int));
+	memcpy((void *) decomp_data, (void *) (temp_data_buf + skipped_samples), kept_samples * sizeof(int32_t));
 	dcdp = decomp_data + kept_samples;
-	last_block_p = comp_data + (unsigned int) (end_block_file_offset - start_block_file_offset);
+	last_block_p = comp_data + (uint32_t) (end_block_file_offset - start_block_file_offset);
   //  printf("end_block_file_offset = %lu, start_block_file_offset = %lu\n", end_block_file_offset, start_block_file_offset);
     
 	while (cdp < last_block_p) {
         read_RED_block_header(cdp, &block_hdr);
-		bytes_decoded = (unsigned int) RED_decompress_block(cdp, dcdp, diff_buffer, encryptionKey, 0, hdr_info.data_encryption_used, &block_hdr);
+		bytes_decoded = (uint32_t) RED_decompress_block(cdp, dcdp, diff_buffer, encryptionKey, 0, hdr_info.data_encryption_used, &block_hdr);
         fflush(stdout);
 		cdp += bytes_decoded;
 		dcdp += block_hdr.sample_count; 
@@ -168,8 +176,8 @@ void decomp_mef(char *f_name, unsigned long long int start_idx, unsigned long lo
 	(void) RED_decompress_block(cdp, temp_data_buf, diff_buffer, encryptionKey, 0, hdr_info.data_encryption_used, &block_hdr);
 
 	// copy requested samples from last block to output buffer
-	kept_samples = (unsigned int) (end_idx - end_block_idx + 1);
-	memcpy((void *) dcdp, (void *) temp_data_buf, kept_samples * sizeof(int));
+	kept_samples = (uint32_t) (end_idx - end_block_idx + 1);
+	memcpy((void *) dcdp, (void *) temp_data_buf, kept_samples * sizeof(int32_t));
 	
 	free(comp_data); comp_data=NULL;
 	free(diff_buffer); diff_buffer=NULL;
@@ -183,8 +191,8 @@ void decomp_mef(char *f_name, unsigned long long int start_idx, unsigned long lo
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
 	char			*f_name, *password;
-	int			buf_len, status, decomp_data_len, dims[2], *decomp_data;
-	unsigned long long int	start_idx, end_idx, long_decomp_data_len;
+	int			buf_len, status,  *decomp_data;
+	unsigned long long int	start_idx, end_idx, long_decomp_data_len, dims[2], decomp_data_len;
 	void			decomp_mef();
 	
 	//  Check for proper number of arguments 
